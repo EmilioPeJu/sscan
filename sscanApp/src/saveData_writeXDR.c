@@ -159,9 +159,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-#ifdef linux
-	#include <unistd.h>
-#endif
 
 /* definition of u_int, etc. */
 #include <sys/types.h>
@@ -197,6 +194,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <osiUnistd.h>
 
 #include <dbEvent.h>
 #include <special.h>
@@ -851,7 +849,7 @@ void saveData_Info() {
 		printf("  links:");
 		cur= scan;
 		while (cur) {
-			printf(cur->name);
+			printf("%s", cur->name);
 			cur= cur->nxt;
 			if (cur) printf("->");
 		}
@@ -2587,7 +2585,18 @@ LOCAL int writeScanRecInProgress(SCAN *pscan, epicsTimeStamp stamp, int isRetry)
 	}
 
 cleanup:
-	fclose(fd);
+	i = fclose(fd);
+	if (i) {
+		printf("saveData:writeScanRecInProgress: fclose(%s) returned %d, errno = %d ('%s')\n", 
+				pscan->ffname, i, errno, strerror(errno));
+		epicsThreadSleep(0.1);
+		i = fclose(fd);
+		if (i) {
+			printf("saveData:writeScanRecInProgress: retry fclose(%s) returned %d, errno = %d ('%s')\n", 
+					pscan->ffname, i, errno, strerror(errno));
+			writeFailed = 1;
+		}
+	}
 	return(writeFailed ? -1 : 0);
 }
 
@@ -2765,8 +2774,19 @@ LOCAL int writeScanRecCompleted(SCAN *pscan, int isRetry)
 	}
 
 cleanup:
-	fclose(fd);
-	return(writeFailed?1:0);
+	i = fclose(fd);
+	if (i) {
+		printf("saveData:writeScanRecCompleted: fclose(%s) returned %d, errno = %d ('%s')\n", 
+				pscan->ffname, i, errno, strerror(errno));
+		epicsThreadSleep(0.1);
+		i = fclose(fd);
+		if (i) {
+			printf("saveData:writeScanRecCompleted: retry fclose(%s) returned %d, errno = %d ('%s')\n", 
+					pscan->ffname, i, errno, strerror(errno));
+			writeFailed = 1;
+		}
+	}
+	return(writeFailed ? -1 : 0);
 }
 
 
@@ -3139,7 +3159,18 @@ LOCAL void proc_scan_cpt(SCAN_LONG_MSG* pmsg)
 	}
 
 cleanup:
-	fclose(fd);
+	i = fclose(fd);
+	if (i) {
+		printf("saveData:proc_scan_cpt: fclose(%s) returned %d, errno = %d ('%s')\n", 
+				pscan->ffname, i, errno, strerror(errno));
+		epicsThreadSleep(0.1);
+		i = fclose(fd);
+		if (i) {
+			printf("saveData:proc_scan_cpt: retry fclose(%s) returned %d, errno = %d ('%s')\n", 
+					pscan->ffname, i, errno, strerror(errno));
+			writeFailed = 1;
+		}
+	}
 	epicsTimeGetCurrent(&now);
 	Debug2(1, "saveData:proc_scan_cpt:%s data point written (%.3fs)\n", pscan->name,
 		(float)epicsTimeDiffInSeconds(&now, &openTime));
@@ -3500,7 +3531,6 @@ LOCAL void remount_file_system(char* filesystem)
 {
 	char  msg[MAX_STRING_SIZE];
 	char *path = local_pathname;
-	int i;
 #ifdef vxWorks
 	char  hostname[40];
 	char *cout;
@@ -3528,7 +3558,7 @@ LOCAL void remount_file_system(char* filesystem)
 	} else {
 		/* extract the host name */
 		cout= hostname;
-		i = 0;
+		int i = 0;
 		while ((*filesystem!='\0') && (*filesystem!='/') && i<40) {
 			*(cout++)= *(filesystem++);
 			i++;
